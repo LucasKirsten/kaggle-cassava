@@ -97,10 +97,12 @@ class DataLoader(object):
             path  = row['path']
             label = tf.keras.utils.to_categorical(row['label'], num_classes=CLASSES)
             
-            img = imread(path, resize=INPUT_SHAPE[:2])
+            img = imread(path)
             
             if augment:
                 img = self.augment(img)
+            
+            img = cv2.resize(img, INPUT_SHAPE[:2][::-1])
             img = self.norm(img)
                 
             yield img, label
@@ -216,12 +218,21 @@ class DataLoader(object):
         
 # augmentation options
 AUG = iaa.SomeOf((1,3), [
+    iaa.OneOf([
+        iaa.GammaContrast((0.5, 2.0)),
+        iaa.SigmoidContrast(gain=(3, 10), cutoff=(0.4, 0.6)),
+        iaa.LogContrast(gain=(0.6, 1.4)),
+        iaa.LinearContrast((0.4, 1.6)),
+        iaa.HistogramEqualization()
+    ]),
+    iaa.OneOf([
+        iaa.Crop(px=(0, 100), keep_size=False),
+        iaa.Crop(percent=(0, 0.4), keep_size=False),
+    ]),
     iaa.SomeOf((0,2), [
         iaa.GaussianBlur(sigma=(0.0, 1.0)),
-        iaa.imgcorruptlike.GaussianNoise(severity=1),
-        iaa.LinearContrast((0.4, 1.6))
+        iaa.imgcorruptlike.GaussianNoise(severity=1)
     ]),
-    iaa.Sometimes(0.3, iaa.HistogramEqualization()),
     iaa.Fliplr(0.5),
     iaa.Flipud(0.5),
     iaa.OneOf([

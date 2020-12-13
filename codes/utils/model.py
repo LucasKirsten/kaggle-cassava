@@ -1,6 +1,7 @@
 from .__init__ import *
 #from . import efficientnet
 from .ops_model import cbam_block
+from .losses import smooth_categorical_crossentropy
 
 import tensorflow as tf
 import tensorflow.keras.backend as K
@@ -8,7 +9,7 @@ import tensorflow.keras.backend as K
 def Model():
     
     inputs = tf.keras.layers.Input(INPUT_SHAPE)
-    backbone = tf.keras.applications.EfficientNetB3(
+    backbone = tf.keras.applications.EfficientNetB1(
         include_top=False,
         weights='imagenet',
         input_tensor=inputs
@@ -34,7 +35,7 @@ def Model():
     
     model.compile(
         tf.keras.optimizers.Adam(lr=5e-4, decay=1e-4),
-        loss = 'categorical_crossentropy',
+        loss = smooth_categorical_crossentropy(),
         metrics = metrics
     )
     
