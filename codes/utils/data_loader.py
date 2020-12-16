@@ -96,6 +96,7 @@ class DataLoader(object):
             
             path  = row['path']
             label = tf.keras.utils.to_categorical(row['label'], num_classes=CLASSES)
+            #label = np.float32([row['label']])
             
             img = imread(path)
             
@@ -172,7 +173,7 @@ class DataLoader(object):
             plt.subplot(batch_size+1, 4, i+1)
             plt.imshow(self.denorm(x[i]))
             plt.axis('off')
-            plt.title(f'Class: {np.argmax(y[i])}')
+            plt.title(f'Class: {y[i]}')
     
     def evaluate(self, model, batch_size=1):
         

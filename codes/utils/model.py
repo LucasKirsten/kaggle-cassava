@@ -1,7 +1,6 @@
 from .__init__ import *
-#from . import efficientnet
+from .losses import *
 from .ops_model import cbam_block
-from .losses import smooth_categorical_crossentropy
 
 import tensorflow as tf
 import tensorflow.keras.backend as K
@@ -9,7 +8,7 @@ import tensorflow.keras.backend as K
 def Model():
     
     inputs = tf.keras.layers.Input(INPUT_SHAPE)
-    backbone = tf.keras.applications.EfficientNetB1(
+    backbone = tf.keras.applications.EfficientNetB4(
         include_top=False,
         weights='imagenet',
         input_tensor=inputs
@@ -17,26 +16,21 @@ def Model():
     #backbone.trainable = False
     
     x = backbone(inputs)
-    x = cbam_block(x, ratio=1)
+    x = cbam_block(x)
     x = tf.keras.layers.GlobalAveragePooling2D() (x)
-    x = tf.keras.layers.Dropout(0.4) (x)
-    x = tf.keras.layers.Dense(256) (x)
-    x = tf.keras.layers.BatchNormalization() (x)
-    x = tf.keras.layers.Activation('relu') (x)
-    x = tf.keras.layers.Dense(5, activation='softmax') (x)
+    x = tf.keras.layers.Dropout(0.2) (x)
+    x = tf.keras.layers.Dense(512, activation='relu') (x)
+    x = tf.keras.layers.Dense(512, activation='relu') (x)
+    x = tf.keras.layers.Dense(5, kernel_regularizer=tf.keras.regularizers.l2(0.0001)) (x)
     model = tf.keras.Model(inputs, x)
     
-    metrics = [
-        tf.keras.metrics.Precision(name='precision'),
-        tf.keras.metrics.Recall(name='recall'),
-        tf.keras.metrics.AUC(name='auc'),
-        'acc'
-    ]
-    
     model.compile(
-        tf.keras.optimizers.Adam(lr=5e-4, decay=1e-4),
-        loss = smooth_categorical_crossentropy(),
-        metrics = metrics
+        tf.keras.optimizers.Adam(lr=1e-4),
+        loss = tf.keras.losses.CategoricalCrossentropy(
+            from_logits=True,
+            label_smoothing=0.2
+        ),
+        metrics = ['acc']
     )
     
     return model
