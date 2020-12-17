@@ -26,7 +26,7 @@ class DataLoader(object):
         self.split_method = split_method
         self.df_train, self.df_val = self._split_data(df, split_method)
         
-        classes_to_predict = [0, 1, 2, 3, 4]
+        classes_to_predict = list(range(CLASSES))
         class_weights = class_weight.compute_class_weight('balanced', classes_to_predict, np.array(self.df_train.label))
         self.class_weights = {i : class_weights[i] for i,label in enumerate(classes_to_predict)}
         print(f'Class weights: {self.class_weights}')
@@ -79,7 +79,8 @@ class DataLoader(object):
             print(df.label.value_counts())
 
     def augment(self, img):
-        return AUG(image=img)
+        img = AUG(image=img)
+        return cv2.resize(img, INPUT_SHAPE[:2][::-1])
         
     def norm(self, img):
         return np.float32(img-DATA_MEAN)/DATA_STD
@@ -110,14 +111,12 @@ class DataLoader(object):
             
         return generator
             
-    def flow(self, data, batch_size):
+    def flow(self, data, batch_size, augment=True):
         ''' Tensorflow iterator '''
         
         # verify dataset to be used
-        augment = False
         if tf.equal(data, 'train'):
             df = self.df_train
-            augment = True
         elif tf.equal(data, 'val'):
             df = self.df_val
         
@@ -175,14 +174,22 @@ class DataLoader(object):
             plt.axis('off')
             plt.title(f'Class: {y[i]}')
     
-    def evaluate(self, model, batch_size=1):
+    def evaluate(self, model, tta=10):
         
-        generator = iter(self.flow('val', batch_size=batch_size))
-        pbar = tqdm(range(self.data_size('val')//batch_size))
+        generator = iter(self.flow('val', batch_size=1, augment=False))
+        pbar = tqdm(range(self.data_size('val')))
         y_pred, y_true = [], []
         for _ in pbar:
             x,y = next(generator)
-            y_pred.extend(np.argmax(model.predict(x), axis=-1))
+
+            x = self.denorm(np.squeeze(x))
+            arr = [self.augment(x) for i in range(tta)] if tta>1 else []
+            arr.append(x)
+            x = np.stack(arr, axis=0)
+            x = self.norm(x)
+            pred = np.mean(model.predict(x), axis=0)
+
+            y_pred.append(np.argmax(pred))
             y_true.extend(np.argmax(y, axis=-1))
         
         print('\nClassification report:')
@@ -194,7 +201,7 @@ class DataLoader(object):
         plt.ylabel('Actual label')
         plt.xlabel('Predicted label')
     
-    def create_submission(self, model, path_to_csv, path_to_images):
+    def create_submission(self, model, path_to_csv, path_to_images, tta=10):
         
         df = pd.read_csv(path_to_csv)
         
@@ -205,10 +212,11 @@ class DataLoader(object):
         
         for i,row in df.iterrows():
             img = imread(row['path'], resize=INPUT_SHAPE[:2])
+            img = np.stack([self.augment(img) for i in range(tta)], axis=0)
             img = self.norm(img)
             
-            pred = model.predict(img[np.newaxis,...])
-            pred = np.argmax(pred[0])
+            pred = np.mean(model.predict(img), axis=0)
+            pred = np.argmax(pred)
             
             submission['label'].append(pred)
             submission['image_id'].append(row['image_id'])
@@ -219,6 +227,7 @@ class DataLoader(object):
         
 # augmentation options
 AUG = iaa.SomeOf((1,3), [
+    iaa.GaussianBlur(sigma=(0.0, 0.5)),
     iaa.OneOf([
         iaa.GammaContrast((0.5, 2.0)),
         iaa.SigmoidContrast(gain=(3, 10), cutoff=(0.4, 0.6)),
@@ -227,12 +236,8 @@ AUG = iaa.SomeOf((1,3), [
         iaa.HistogramEqualization()
     ]),
     iaa.OneOf([
-        iaa.Crop(px=(0, 100), keep_size=False),
-        iaa.Crop(percent=(0, 0.4), keep_size=False),
-    ]),
-    iaa.SomeOf((0,2), [
-        iaa.GaussianBlur(sigma=(0.0, 1.0)),
-        iaa.imgcorruptlike.GaussianNoise(severity=1)
+        iaa.Crop(px=(0, 200), keep_size=False),
+        iaa.Crop(percent=(0, 0.6), keep_size=False),
     ]),
     iaa.Fliplr(0.5),
     iaa.Flipud(0.5),
@@ -248,5 +253,11 @@ AUG = iaa.SomeOf((1,3), [
         iaa.ScaleY((0.5, 1.5))
     ]),
     iaa.Sometimes(0.1, iaa.PiecewiseAffine(scale=(0.01, 0.05))),
-    iaa.Rot90([1,2,3,4])
+    iaa.Rot90([1,2,3,4]),
+    iaa.OneOf([
+        iaa.imgcorruptlike.GaussianNoise(severity=(1,2)),
+        iaa.imgcorruptlike.ShotNoise(severity=(1,2)),
+        iaa.imgcorruptlike.ImpulseNoise(severity=(1,2)),
+        iaa.imgcorruptlike.SpeckleNoise(severity=(1,2))
+    ]),
 ])

@@ -15,6 +15,7 @@ class CategoricalCrossentropy(tf.keras.losses.CategoricalCrossentropy):
     def __call__(self, y_true, y_pred, *args, **kwargs):
         self.current_it += 1
 
+        
 ''' CATEGORICAL FOCAL LOSS '''
 
 _EPSILON = tf.keras.backend.epsilon()
