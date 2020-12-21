@@ -14,6 +14,7 @@
 # limitations under the License.
 
 """Robust Bi-Tempered Logistic Loss Based on Bregman Divergences.
+
 Source: https://bit.ly/3jSol8T
 """
 
@@ -23,10 +24,12 @@ import tensorflow.compat.v1 as tf
 
 def for_loop(num_iters, body, initial_args):
   """Runs a simple for-loop with given body and initial_args.
+
   Args:
     num_iters: Maximum number of iterations.
     body: Body of the for-loop.
     initial_args: Args to the body for the first iteration.
+
   Returns:
     Output of the final iteration.
   """
@@ -62,6 +65,7 @@ def exp_t(u, t):
 
 def compute_normalization_fixed_point(activations, t, num_iters=5):
   """Returns the normalization value for each example (t > 1.0).
+
   Args:
     activations: A multi-dimensional tensor with last dimension `num_classes`.
     t: Temperature 2 (> 1.0 for tail heaviness).
@@ -90,6 +94,7 @@ def compute_normalization_fixed_point(activations, t, num_iters=5):
 
 def compute_normalization_binary_search(activations, t, num_iters=10):
   """Returns the normalization value for each example (t < 1.0).
+
   Args:
     activations: A multi-dimensional tensor with last dimension `num_classes`.
     t: Temperature 2 (< 1.0 for finite support).
@@ -127,6 +132,7 @@ def compute_normalization_binary_search(activations, t, num_iters=10):
 
 def compute_normalization(activations, t, num_iters=5):
   """Returns the normalization value for each example.
+
   Args:
     activations: A multi-dimensional tensor with last dimension `num_classes`.
     t: Temperature 2 (< 1.0 for finite support, > 1.0 for tail heaviness).
@@ -143,11 +149,13 @@ def compute_normalization(activations, t, num_iters=5):
 
 def _internal_bi_tempered_logistic_loss(activations, labels, t1, t2):
   """Computes the Bi-Tempered logistic loss.
+
   Args:
     activations: A multi-dimensional tensor with last dimension `num_classes`.
     labels: batch_size
     t1: Temperature 1 (< 1.0 for boundedness).
     t2: Temperature 2 (> 1.0 for tail heaviness).
+
   Returns:
     A loss tensor for robust loss.
   """
@@ -187,10 +195,12 @@ def _internal_bi_tempered_logistic_loss(activations, labels, t1, t2):
 
 def tempered_sigmoid(activations, t, num_iters=5):
   """Tempered sigmoid function.
+
   Args:
     activations: Activations for the positive class for binary classification.
     t: Temperature tensor > 0.0.
     num_iters: Number of iterations to run the method.
+
   Returns:
     A probabilities tensor.
   """
@@ -214,10 +224,12 @@ def tempered_sigmoid(activations, t, num_iters=5):
 
 def tempered_softmax(activations, t, num_iters=5):
   """Tempered softmax function.
+
   Args:
     activations: A multi-dimensional tensor with last dimension `num_classes`.
     t: Temperature tensor > 0.0.
     num_iters: Number of iterations to run the method.
+
   Returns:
     A probabilities tensor.
   """
@@ -236,6 +248,7 @@ def bi_tempered_binary_logistic_loss(activations,
                                      label_smoothing=0.0,
                                      num_iters=5):
   """Bi-Tempered binary logistic loss.
+
   Args:
     activations: A tensor containing activations for class 1.
     labels: A tensor with shape and dtype as activations.
@@ -243,6 +256,7 @@ def bi_tempered_binary_logistic_loss(activations,
     t2: Temperature 2 (> 1.0 for tail heaviness, < 1.0 for finite support).
     label_smoothing: Label smoothing
     num_iters: Number of iterations to run the method.
+
   Returns:
     A loss tensor.
   """
@@ -267,6 +281,7 @@ def bi_tempered_logistic_loss(activations,
                               label_smoothing=0.0,
                               num_iters=5):
   """Bi-Tempered Logistic Loss with custom gradient.
+
   Args:
     activations: A multi-dimensional tensor with last dimension `num_classes`.
     labels: A tensor with shape and dtype as activations.
@@ -274,6 +289,7 @@ def bi_tempered_logistic_loss(activations,
     t2: Temperature 2 (> 1.0 for tail heaviness, < 1.0 for finite support).
     label_smoothing: Label smoothing parameter between [0, 1).
     num_iters: Number of iterations to run the method.
+
   Returns:
     A loss tensor.
   """
@@ -290,8 +306,10 @@ def bi_tempered_logistic_loss(activations,
     @tf.custom_gradient
     def _custom_gradient_bi_tempered_logistic_loss(activations):
       """Bi-Tempered Logistic Loss with custom gradient.
+
       Args:
         activations: A multi-dimensional tensor with last dim `num_classes`.
+
       Returns:
         A loss tensor, grad.
       """
@@ -305,6 +323,7 @@ def bi_tempered_logistic_loss(activations,
 
         def grad(d_loss):
           """Explicit gradient calculation.
+
           Args:
             d_loss: Infinitesimal change in the loss value.
           Returns:
@@ -341,12 +360,14 @@ def bi_tempered_logistic_loss(activations,
 
 def sparse_bi_tempered_logistic_loss(activations, labels, t1, t2, num_iters=5):
   """Sparse Bi-Tempered Logistic Loss with custom gradient.
+
   Args:
     activations: A multi-dimensional tensor with last dimension `num_classes`.
     labels: A tensor with dtype of int32.
     t1: Temperature 1 (< 1.0 for boundedness).
     t2: Temperature 2 (> 1.0 for tail heaviness, < 1.0 for finite support).
     num_iters: Number of iterations to run the method.
+
   Returns:
     A loss tensor.
   """
@@ -358,8 +379,10 @@ def sparse_bi_tempered_logistic_loss(activations, labels, t1, t2, num_iters=5):
     @tf.custom_gradient
     def _custom_gradient_sparse_bi_tempered_logistic_loss(activations):
       """Sparse Bi-Tempered Logistic Loss with custom gradient.
+
       Args:
         activations: A multi-dimensional tensor with last dim `num_classes`.
+
       Returns:
         A loss tensor, grad.
       """
@@ -375,6 +398,7 @@ def sparse_bi_tempered_logistic_loss(activations, labels, t1, t2, num_iters=5):
 
         def grad(d_loss):
           """Explicit gradient calculation.
+
           Args:
             d_loss: Infinitesimal change in the loss value.
           Returns:

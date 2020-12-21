@@ -1,3 +1,5 @@
+from .__init__ import FLOAT_TYPE
+
 import tensorflow as tf
 import tensorflow.keras.backend as K
 
@@ -103,14 +105,14 @@ def sparse_categorical_focal_loss(y_true, y_pred, gamma, *,
         :class:`tf.keras.losses.Loss`.
     """
     # Process focusing parameter
-    gamma = tf.convert_to_tensor(gamma, dtype=tf.dtypes.float32)
+    gamma = tf.convert_to_tensor(gamma, dtype=tf.float32)
     gamma_rank = gamma.shape.rank
     scalar_gamma = gamma_rank == 0
 
     # Process class weight
     if class_weight is not None:
         class_weight = tf.convert_to_tensor(class_weight,
-                                            dtype=tf.dtypes.float32)
+                                            dtype=tf.float32)
 
     # Process prediction tensor
     y_pred = tf.convert_to_tensor(y_pred)

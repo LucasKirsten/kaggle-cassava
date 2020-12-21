@@ -16,11 +16,14 @@ import imgaug.augmenters as iaa
 import imgaug.parameters as iap
 
 class DataLoader(object):
-    def __init__(self, split_method='balanced'):
+    def __init__(self,
+                 path_csv,
+                 path_images,
+                 split_method='ratio'):
         
         # open the default training csv file
-        df = pd.read_csv('../input/cassava-leaf-disease-classification/train.csv')
-        df['path'] = '../input/cassava-leaf-disease-classification/train_images/' + df['image_id']
+        df = pd.read_csv(path_csv)
+        df['path'] = path_images + df['image_id']
         
         # split into train and validation sets
         self.split_method = split_method
@@ -35,7 +38,7 @@ class DataLoader(object):
         
     def _split_data(self, df, method):
         
-        assert 'balanced' in method or method=='ratio', 'Method for splitting dataset should either be balanced or ratio!'
+        assert method in ['balanced, balanced_epochs', 'ratio'] or 'fold' in method, 'Invalid splitting method!'
         
         if 'balanced' in method:
             nr_samples = int(df.label.value_counts().min() * SPLIT_RATIO)
@@ -60,6 +63,12 @@ class DataLoader(object):
                 for _ in range(ratio):
                     dff = dff.append(df_class)
             df_train = dff
+        
+        elif 'fold' in method:
+            fold_nr = int(method.replace('fold',''))
+            print(f'Using splitted fold {fold_nr}...')
+            df_train = df[df['kfold']!=fold_nr]
+            df_val   = df[df['kfold']==fold_nr]
             
         return df_train, df_val
         
@@ -97,7 +106,7 @@ class DataLoader(object):
             
             path  = row['path']
             label = tf.keras.utils.to_categorical(row['label'], num_classes=CLASSES)
-            #label = np.float32([row['label']])
+            #label = np.uint8(row['label'])
             
             img = imread(path)
             
@@ -174,7 +183,9 @@ class DataLoader(object):
             plt.axis('off')
             plt.title(f'Class: {y[i]}')
     
-    def evaluate(self, model, tta=10):
+    def evaluate(self, model, mode='categorical', tta=10):
+        
+        assert mode=='categorical' or 'sparse' in mode, 'Invalid mode!'
         
         generator = iter(self.flow('val', batch_size=1, augment=False))
         pbar = tqdm(range(self.data_size('val')))
@@ -182,7 +193,7 @@ class DataLoader(object):
         for _ in pbar:
             x,y = next(generator)
 
-            x = self.denorm(np.squeeze(x))
+            x = self.denorm(x[0])
             arr = [self.augment(x) for i in range(tta)] if tta>1 else []
             arr.append(x)
             x = np.stack(arr, axis=0)
@@ -190,7 +201,10 @@ class DataLoader(object):
             pred = np.mean(model.predict(x), axis=0)
 
             y_pred.append(np.argmax(pred))
-            y_true.extend(np.argmax(y, axis=-1))
+            if 'sparse' in mode:
+                y_true.extend(y)
+            else:
+                y_true.extend(np.argmax(y, axis=-1))
         
         print('\nClassification report:')
         print(classification_report(y_true, y_pred))
@@ -226,8 +240,7 @@ class DataLoader(object):
         print(submission)
         
 # augmentation options
-AUG = iaa.SomeOf((1,3), [
-    iaa.GaussianBlur(sigma=(0.0, 0.5)),
+AUG = iaa.SomeOf((3,6), [
     iaa.OneOf([
         iaa.GammaContrast((0.5, 2.0)),
         iaa.SigmoidContrast(gain=(3, 10), cutoff=(0.4, 0.6)),
@@ -236,28 +249,33 @@ AUG = iaa.SomeOf((1,3), [
         iaa.HistogramEqualization()
     ]),
     iaa.OneOf([
-        iaa.Crop(px=(0, 200), keep_size=False),
-        iaa.Crop(percent=(0, 0.6), keep_size=False),
+        iaa.Crop(px=(0, 100), keep_size=False),
+        iaa.Crop(percent=(0, 0.4), keep_size=False),
     ]),
-    iaa.Fliplr(0.5),
-    iaa.Flipud(0.5),
     iaa.OneOf([
-        iaa.Affine(scale=(0.5, 1.2)),
-        iaa.Affine(scale={"x": (0.5, 1.2), "y": (0.5, 1.2)}),
-        iaa.Affine(translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)}),
-        iaa.Affine(rotate=(-45, 45))
+        iaa.Affine(scale=(0.5, 1.5)),
+        iaa.Affine(scale={"x": (0.5, 1.5), "y": (0.5, 1.5)}),
+        iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
     ]),
-    iaa.Sometimes(0.3, iaa.Affine(shear=(-16, 16))),
-    iaa.SomeOf((0,1), [
+    iaa.OneOf([
+        iaa.Affine(rotate=(-45, 45)),
+        iaa.Rot90([1,2,3,4]),
+        iaa.Fliplr(),
+        iaa.Flipud()
+    ]),
+    iaa.OneOf([
+        iaa.PiecewiseAffine(scale=(0.01, 0.05)),
+        iaa.Affine(shear=(-16, 16)),
+    ]),
+    iaa.OneOf([
         iaa.ScaleX((0.5, 1.5)),
         iaa.ScaleY((0.5, 1.5))
     ]),
-    iaa.Sometimes(0.1, iaa.PiecewiseAffine(scale=(0.01, 0.05))),
-    iaa.Rot90([1,2,3,4]),
     iaa.OneOf([
-        iaa.imgcorruptlike.GaussianNoise(severity=(1,2)),
-        iaa.imgcorruptlike.ShotNoise(severity=(1,2)),
-        iaa.imgcorruptlike.ImpulseNoise(severity=(1,2)),
-        iaa.imgcorruptlike.SpeckleNoise(severity=(1,2))
+        iaa.GaussianBlur(sigma=(0.3, 1.)),
+        iaa.imgcorruptlike.GaussianNoise(severity=(1,4)),
+        iaa.imgcorruptlike.ShotNoise(severity=(1,4)),
+        iaa.imgcorruptlike.ImpulseNoise(severity=(1,4)),
+        iaa.imgcorruptlike.SpeckleNoise(severity=(1,4))
     ]),
 ])

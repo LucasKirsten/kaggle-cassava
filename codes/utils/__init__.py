@@ -1,8 +1,8 @@
 # global variables
 SEED = 42
 CLASSES = 5
-BATCH_SIZE = 8
-INPUT_SHAPE = (512, 512, 3)
+BATCH_SIZE = 12
+INPUT_SHAPE = (456,456,3)
 SPLIT_RATIO = 0.2
 USE_FLOAT16 = False
 DATA_MEAN = [109.73170952, 126.66521077, 79.92212092]
@@ -32,6 +32,9 @@ if USE_FLOAT16:
     from tensorflow.keras.mixed_precision import experimental as mixed_precision
     policy = mixed_precision.Policy('mixed_float16')
     mixed_precision.set_policy(policy)
+    FLOAT_TYPE = tf.float16
+else:
+    FLOAT_TYPE = tf.float32
 
 # function to read images in RGB and resize
 def imread(path, resize=None):

@@ -1,7 +1,7 @@
 from .__init__ import *
 from .losses import *
 from .ops_model import cbam_block
-from .loss_bitempered import bi_tempered_logistic_loss
+from .tempered_loss import bi_tempered_logistic_loss
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -17,65 +17,40 @@ def Model():
     )
     
     x = backbone(inputs)
-    #x = cbam_block(x)
     x = tf.keras.layers.GlobalAveragePooling2D() (x)
     x = tf.keras.layers.Dropout(0.2) (x)
-    x = tf.keras.layers.Dense(256) (x)
-    x = tf.keras.layers.BatchNormalization() (x)
-    x = tf.keras.layers.Activation('relu') (x)
-    x = tf.keras.layers.Dropout(0.1) (x)
-    x = tf.keras.layers.Dense(5, kernel_regularizer=tf.keras.regularizers.l2(0.0001)) (x)
+    x = standart_head(x)
+    x = tf.keras.layers.Dense(5, activation='softmax') (x)
     model = tf.keras.Model(inputs, x)
-    
-    loss = lambda y_true,y_pred : bi_tempered_logistic_loss(
-        y_pred,
-        y_true,
-        t1=0.2,
-        t2=4.0,
-        label_smoothing=0.2
-    )
-    
-    #loss = tf.keras.losses.CategoricalCrossentropy(
-    #        from_logits=True,
-    #        label_smoothing=0.2
-    #)
-    
-    # warmup learning rate with later decay
-    lr_warm = tf.keras.optimizers.schedules.PolynomialDecay(
-        initial_learning_rate=1e-8,
-        decay_steps=2000,
-        end_learning_rate=5e-4,
-        power=1.0,
-        cycle=False
-    )
-    lr_down = tf.keras.optimizers.schedules.PolynomialDecay(
-        initial_learning_rate=5e-4,
-        decay_steps=10000,
-        end_learning_rate=1e-6,
-        power=3.0,
-        cycle=True
-    )
-    lr = Scheduler(2000, lr_warm, lr_down)
-    
-    model.compile(
-        tf.keras.optimizers.Adam(lr=3e-4, decay=1e-3),
-        loss = loss,
-        metrics = ['acc']
-    )
     
     return model
 
-class Scheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
-    def __init__(self, steps_warm, lr_warm, lr_after, *args, **kwargs):
-        super(Scheduler, self).__init__()
+def standart_head(input_tensor):
+    x = tf.keras.layers.Dense(256) (input_tensor)
+    x = tf.keras.layers.BatchNormalization() (x)
+    x = tf.keras.layers.Activation('relu') (x)
+    x = tf.keras.layers.Dropout(0.1) (x)
+    return x
+
+def spinalNet_head(x):
+    
+    x = tf.keras.layers.Dense(512) (x)
+    x = tf.keras.layers.BatchNormalization() (x)
+    x = tf.keras.layers.Activation('relu') (x)
+    
+    def linear_block(x):
+        x = tf.keras.layers.Dropout(0.1) (x)
+        return tf.keras.layers.Dense(x.shape[-1], activation='relu') (x)
         
-        self.steps_warm = steps_warm
-        self.lr_warm = lr_warm
-        self.lr_after = lr_after
-        
-    def __call__(self, step):
-        return tf.where(
-            tf.math.greater(step, self.steps_warm),
-            self.lr_after(step-self.steps_warm),
-            self.lr_warm(step)
-        )
+    x1 = linear_block(x[:, 0:x.shape[-1]//2])
+    x2 = linear_block( tf.keras.layers.Concatenate(axis=-1)([x[:, x.shape[-1]//2:x.shape[-1]], x1]) )
+    x3 = linear_block( tf.keras.layers.Concatenate(axis=-1)([x[:,0:x.shape[-1]//2], x2]) )
+    x4 = linear_block( tf.keras.layers.Concatenate(axis=-1)([x[:, x.shape[-1]//2:x.shape[-1]], x3]) )
+    
+    x = tf.keras.layers.Concatenate(axis=-1)([x1, x2])
+    x = tf.keras.layers.Concatenate(axis=-1)([x, x3])
+    x = tf.keras.layers.Concatenate(axis=-1)([x, x4])
+    
+    x = tf.keras.layers.Dropout(0.1) (x)
+    
+    return x
