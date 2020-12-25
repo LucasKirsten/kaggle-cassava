@@ -15,6 +15,10 @@ from sklearn.model_selection import StratifiedKFold
 import imgaug.augmenters as iaa
 import imgaug.parameters as iap
 
+import multiprocessing
+from joblib import Parallel, delayed
+NUM_CORES = multiprocessing.cpu_count()
+
 class DataLoader(object):
     def __init__(self,
                  path_csv,
@@ -31,16 +35,16 @@ class DataLoader(object):
         
         classes_to_predict = list(range(CLASSES))
         class_weights = class_weight.compute_class_weight('balanced', classes_to_predict, np.array(self.df_train.label))
-        self.class_weights = {i : class_weights[i] for i,label in enumerate(classes_to_predict)}
-        print(f'Class weights: {self.class_weights}')
+        self.class_weight = {i : class_weights[i] for i,label in enumerate(classes_to_predict)}
+        print(f'Class weights: {self.class_weight}')
         
         print(f'Total train: {len(self.df_train)}, Total val: {len(self.df_val)}')
         
     def _split_data(self, df, method):
         
-        assert method in ['balanced, balanced_epochs', 'ratio'] or 'fold' in method, 'Invalid splitting method!'
+        assert method in ['balanced', 'ratio'] or 'fold' in method, 'Invalid splitting method!'
         
-        if 'balanced' in method:
+        if method=='balanced':
             nr_samples = int(df.label.value_counts().min() * SPLIT_RATIO)
         
             df_val = []
@@ -51,18 +55,6 @@ class DataLoader(object):
             
         elif method=='ratio':
             df_train, df_val = train_test_split(df, test_size=SPLIT_RATIO, random_state=SEED, shuffle=True, stratify=df['label'])
-            
-        if method=='balanced_epochs':
-            nr_samples = int(df_train.label.value_counts().max())
-
-            dff = pd.DataFrame(columns=df.columns)
-            for c in range(CLASSES):
-                df_class = df_train[df_train['label']==c]
-                
-                ratio = max(1, int(nr_samples/len(df_class)))
-                for _ in range(ratio):
-                    dff = dff.append(df_class)
-            df_train = dff
         
         elif 'fold' in method:
             fold_nr = int(method.replace('fold',''))
@@ -88,8 +80,7 @@ class DataLoader(object):
             print(df.label.value_counts())
 
     def augment(self, img):
-        img = AUG(image=img)
-        return cv2.resize(img, INPUT_SHAPE[:2][::-1])
+        return AUG(image=img)
         
     def norm(self, img):
         return np.float32(img-DATA_MEAN)/DATA_STD
@@ -103,17 +94,11 @@ class DataLoader(object):
         
         def generator(index):
             row = rows[index]
-            
             path  = row['path']
             label = tf.keras.utils.to_categorical(row['label'], num_classes=CLASSES)
-            #label = np.uint8(row['label'])
-            
             img = imread(path)
-            
             if augment:
                 img = self.augment(img)
-            
-            img = cv2.resize(img, INPUT_SHAPE[:2][::-1])
             img = self.norm(img)
                 
             yield img, label
@@ -130,24 +115,9 @@ class DataLoader(object):
             df = self.df_val
         
         # row to each path sample
-        if self.split_method=='balanced_epochs' and data=='train':
-            df_train1, df_train2 = train_test_split(df, test_size=0.5, random_state=SEED, shuffle=True, stratify=df['label'])
-            
-            rows1 = [r[1] for r in list(df_train1.iterrows())]
-            indexes1 = [i for i in range(len(rows1))]
-            np.random.shuffle(indexes1)
-            
-            rows2 = [r[1] for r in list(df_train2.iterrows())]
-            indexes2 = [i for i in range(len(rows2))]
-            np.random.shuffle(indexes2)
-            
-            rows = rows1 + rows2
-            indexes = indexes1 + indexes2
-            
-        else:
-            rows = [r[1] for r in list(df.iterrows())]
-            indexes = [i for i in range(len(rows))]
-            np.random.shuffle(indexes)
+        rows = [r[1] for r in list(df.iterrows())]
+        indexes = [i for i in range(len(rows))]
+        np.random.shuffle(indexes)
         
         # get one data for getting shape and dtypes
         x,y = next(self._get_generator(rows, augment)(0))
@@ -164,6 +134,11 @@ class DataLoader(object):
                         block_length=1,
                         num_parallel_calls=tf.data.experimental.AUTOTUNE)
             dataset = dataset.batch(batch_size)
+            if tf.equal(data, 'train'):
+                dataset = dataset.map(crop_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+                dataset = dataset.map(cutmix, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            else:
+                dataset = dataset.map(resize_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
             dataset = dataset.repeat()
             dataset = dataset.apply(tf.data.experimental.ignore_errors())
         
@@ -172,6 +147,7 @@ class DataLoader(object):
     def view_data(self, data='train', batch_size=4):
         x, y = next(iter(self.flow(data, batch_size)))
         x = x.numpy(); y = y.numpy()
+        y = np.round(y, 2)
         
         print('Batch X: ', x.shape, x.min(), x.max())
         print('Batch Y: ', y.shape, y.min(), y.max())
@@ -182,6 +158,15 @@ class DataLoader(object):
             plt.imshow(self.denorm(x[i]))
             plt.axis('off')
             plt.title(f'Class: {y[i]}')
+            
+    def tta_aug(self, img, tta=1):
+        images = []
+        if tta>1:
+            with Parallel(n_jobs=NUM_CORES, prefer="threads") as parallel:
+                images = parallel(delayed(self.augment)(img) for i in range(tta))
+        images.append(img)
+        images = np.stack(images, axis=0)
+        return self.norm(images)
     
     def evaluate(self, model, mode='categorical', tta=10):
         
@@ -194,10 +179,7 @@ class DataLoader(object):
             x,y = next(generator)
 
             x = self.denorm(x[0])
-            arr = [self.augment(x) for i in range(tta)] if tta>1 else []
-            arr.append(x)
-            x = np.stack(arr, axis=0)
-            x = self.norm(x)
+            x = self.tta_aug(x, tta)
             pred = np.mean(model.predict(x), axis=0)
 
             y_pred.append(np.argmax(pred))
@@ -218,16 +200,13 @@ class DataLoader(object):
     def create_submission(self, model, path_to_csv, path_to_images, tta=10):
         
         df = pd.read_csv(path_to_csv)
-        
-        df = pd.read_csv(path_to_csv)
         df['path'] = path_to_images + df['image_id']
         
         submission = {'image_id':[], 'label':[]}
         
         for i,row in df.iterrows():
             img = imread(row['path'], resize=INPUT_SHAPE[:2])
-            img = np.stack([self.augment(img) for i in range(tta)], axis=0)
-            img = self.norm(img)
+            img = self.tta_aug(img, tta)
             
             pred = np.mean(model.predict(img), axis=0)
             pred = np.argmax(pred)
@@ -238,44 +217,77 @@ class DataLoader(object):
         submission = pd.DataFrame(submission)
         submission.to_csv('submission.csv', index=False)
         print(submission)
-        
+                    
+# crop image to 224x224
+def crop_image(image, target):
+    image = tf.image.random_crop(image, [tf.shape(image)[0],*INPUT_SHAPE[:2],3])
+    return image, target
+                    
+# resize image to 224x224
+def resize_image(image, target):
+    image = tf.image.resize(image, INPUT_SHAPE[:2])
+    return image, target
+                    
 # augmentation options
-AUG = iaa.SomeOf((3,6), [
-    iaa.OneOf([
-        iaa.GammaContrast((0.5, 2.0)),
-        iaa.SigmoidContrast(gain=(3, 10), cutoff=(0.4, 0.6)),
-        iaa.LogContrast(gain=(0.6, 1.4)),
-        iaa.LinearContrast((0.4, 1.6)),
-        iaa.HistogramEqualization()
+AUG = iaa.Sequential([
+    iaa.SomeOf((0,1), [
+        iaa.AddToBrightness((-30, 30)),
+        iaa.MultiplyBrightness((0.5, 1.5)),
+        iaa.MultiplySaturation((0.5, 1.5)),
+        iaa.AddToSaturation((-50, 50))
     ]),
     iaa.OneOf([
-        iaa.Crop(px=(0, 100), keep_size=False),
-        iaa.Crop(percent=(0, 0.4), keep_size=False),
-    ]),
-    iaa.OneOf([
-        iaa.Affine(scale=(0.5, 1.5)),
-        iaa.Affine(scale={"x": (0.5, 1.5), "y": (0.5, 1.5)}),
-        iaa.Affine(translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}),
-    ]),
-    iaa.OneOf([
-        iaa.Affine(rotate=(-45, 45)),
-        iaa.Rot90([1,2,3,4]),
-        iaa.Fliplr(),
-        iaa.Flipud()
-    ]),
-    iaa.OneOf([
+        iaa.ScaleX((1.0, 1.5)),
+        iaa.ScaleY((1.0, 1.5)),
+        iaa.Affine(scale={"x": (1.0, 1.2), "y": (1.0, 1.2)}),
+        iaa.Affine(rotate=(-20, 20)),
         iaa.PiecewiseAffine(scale=(0.01, 0.05)),
-        iaa.Affine(shear=(-16, 16)),
+        iaa.Affine(shear=(-16, 16))
     ]),
-    iaa.OneOf([
-        iaa.ScaleX((0.5, 1.5)),
-        iaa.ScaleY((0.5, 1.5))
-    ]),
-    iaa.OneOf([
-        iaa.GaussianBlur(sigma=(0.3, 1.)),
-        iaa.imgcorruptlike.GaussianNoise(severity=(1,4)),
-        iaa.imgcorruptlike.ShotNoise(severity=(1,4)),
-        iaa.imgcorruptlike.ImpulseNoise(severity=(1,4)),
-        iaa.imgcorruptlike.SpeckleNoise(severity=(1,4))
-    ]),
+    iaa.Fliplr(0.5),
+    iaa.Flipud(0.5),
+    iaa.Rot90([1,2,3,4])
 ])
+
+# cutmix augmentation
+beta = 0.5
+r = 0.7
+
+def rand_bbox(size, lam):
+
+    W = size[1] 
+    H = size[2]
+    cut_rat = np.sqrt(1. - lam)
+    cut_w = np.int(W * cut_rat)
+    cut_h = np.int(H * cut_rat)
+
+    # uniform
+    cx = np.random.randint(W)
+    cy = np.random.randint(H)
+    
+    bbx1 = np.clip(cx - cut_w // 2, 0, W)
+    bby1 = np.clip(cy - cut_h // 2, 0, H)
+    bbx2 = np.clip(cx + cut_w // 2, 0, W)
+    bby2 = np.clip(cy + cut_h // 2, 0, H)
+
+    return bbx1, bby1, bbx2, bby2
+
+def cutmix(image, target):
+    
+    lam = np.random.beta(beta, beta)
+    rand_index = tf.random.shuffle(tf.range(len(target)))
+    
+    target_a = target
+    target_b = tf.gather(target, rand_index)
+    
+    bbx1, bby1, bbx2, bby2 = rand_bbox(image.shape, lam)       
+    image_a = image
+    image_b = tf.gather(image, rand_index)
+    
+    mask = np.ones(image.shape[1:])
+    mask[bbx1:bbx2, bby1:bby2, :] = 0          
+    image_cutmix = image_a*mask + image_b*(1.-mask)
+    
+    target = target_a * lam + target_b * (1. - lam)
+    
+    return image_cutmix, target
