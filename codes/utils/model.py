@@ -1,16 +1,14 @@
 from .__init__ import *
-from .losses import *
-from .ops_model import cbam_block
-from .tempered_loss import bi_tempered_logistic_loss
 
 import tensorflow as tf
 import tensorflow_addons as tfa
 import tensorflow.keras.backend as K
+from . import efficientnet
 
 def Model():
     
     inputs = tf.keras.layers.Input(INPUT_SHAPE)
-    backbone = tf.keras.applications.ResNet50V2(
+    backbone = efficientnet.EfficientNetB4(
         include_top=False,
         weights='imagenet',
         input_tensor=inputs
@@ -20,7 +18,7 @@ def Model():
     x = tf.keras.layers.GlobalAveragePooling2D() (x)
     x = tf.keras.layers.Dropout(0.2) (x)
     x = standart_head(x)
-    x = tf.keras.layers.Dense(5) (x)
+    x = tf.keras.layers.Dense(5, activation='softmax') (x)
     model = tf.keras.Model(inputs, x)
     
     return model
@@ -29,7 +27,7 @@ def standart_head(input_tensor):
     x = tf.keras.layers.Dense(256) (input_tensor)
     x = tf.keras.layers.BatchNormalization() (x)
     x = tf.keras.layers.Activation('relu') (x)
-    x = tf.keras.layers.Dropout(0.1) (x)
+    x = tf.keras.layers.Dropout(0.2) (x)
     return x
 
 def spinalNet_head(x):

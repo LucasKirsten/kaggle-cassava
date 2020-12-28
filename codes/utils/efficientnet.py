@@ -35,7 +35,8 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
-from .ops_model import cbam_block
+from .layers.dropblock import DropBlock
+from .layers.blurpool import AverageBlurPooling2D
 
 
 BASE_WEIGHTS_PATH = 'https://storage.googleapis.com/keras-applications/'
@@ -305,8 +306,6 @@ def EfficientNet(
 
   # Build stem
   x = img_input
-  x = layers.Rescaling(1. / 255.)(x)
-  x = layers.Normalization(axis=bn_axis)(x)
 
   x = layers.ZeroPadding2D(
       padding=imagenet_utils.correct_pad(x, 3),
@@ -344,7 +343,6 @@ def EfficientNet(
           drop_connect_rate * b / blocks,
           name='block{}{}_'.format(i + 1, chr(j + 97)),
           **args)
-      x = cbam_block(x)
       b += 1
 
   # Build top
@@ -360,7 +358,7 @@ def EfficientNet(
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
     if dropout_rate > 0:
-      x = layers.Dropout(dropout_rate, name='top_dropout')(x)
+      x = DropBlock(3, dropout_rate, name='top_dropblock')(x)
     imagenet_utils.validate_activation(classifier_activation, weights)
     x = layers.Dense(
         classes,
@@ -449,22 +447,17 @@ def block(inputs,
     x = inputs
 
   # Depthwise Convolution
-  if strides == 2:
-    x = layers.ZeroPadding2D(
-        padding=imagenet_utils.correct_pad(x, kernel_size),
-        name=name + 'dwconv_pad')(x)
-    conv_pad = 'valid'
-  else:
-    conv_pad = 'same'
   x = layers.DepthwiseConv2D(
       kernel_size,
-      strides=strides,
-      padding=conv_pad,
+      strides=1,
+      padding='same',
       use_bias=False,
       depthwise_initializer=CONV_KERNEL_INITIALIZER,
       name=name + 'dwconv')(x)
   x = layers.BatchNormalization(axis=bn_axis, name=name + 'bn')(x)
   x = layers.Activation(activation, name=name + 'activation')(x)
+  if strides == 2:
+    x = AverageBlurPooling2D() (x)
 
   # Squeeze and Excitation phase
   if 0 < se_ratio <= 1:

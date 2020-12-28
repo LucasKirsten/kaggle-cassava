@@ -1,21 +1,8 @@
-from .__init__ import FLOAT_TYPE
-
 import tensorflow as tf
 import tensorflow.keras.backend as K
 
 import itertools
 from typing import Any, Optional
-
-# TODO
-class CategoricalCrossentropy(tf.keras.losses.CategoricalCrossentropy):
-    def __init__(self, sample_weight, iters_update, *args, **kwargs):
-        super(CategoricalCrossentropy, self).__init__(*args, **kwargs)
-        self.sample_weight = sample_weight
-        self.iters_update  = iters_update
-        self.current_it    = 0
-        
-    def __call__(self, y_true, y_pred, *args, **kwargs):
-        self.current_it += 1
 
         
 ''' CATEGORICAL FOCAL LOSS '''
