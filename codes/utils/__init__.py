@@ -79,4 +79,4 @@ def plot_metrics(history):
 
 if __name__ == 'utils':
     from .data_loader import DataLoader
-    from .model import Model
+    #from .model import Model
