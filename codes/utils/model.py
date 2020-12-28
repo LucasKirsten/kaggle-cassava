@@ -3,7 +3,7 @@ from .__init__ import *
 import tensorflow as tf
 import tensorflow_addons as tfa
 import tensorflow.keras.backend as K
-from . import efficientnet
+from . import efficientnet, resnext
 
 def Model():
     

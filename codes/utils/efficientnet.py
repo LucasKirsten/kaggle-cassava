@@ -35,7 +35,7 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
-from .layers.dropblock import DropBlock
+from .layers.dropblock import DropBlock2D as DropBlock
 from .layers.blurpool import AverageBlurPooling2D
 
 
@@ -359,6 +359,7 @@ def EfficientNet(
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
     if dropout_rate > 0:
       x = DropBlock(3, dropout_rate, name='top_dropblock')(x)
+      print('dropblock')
     imagenet_utils.validate_activation(classifier_activation, weights)
     x = layers.Dense(
         classes,
