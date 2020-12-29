@@ -133,12 +133,16 @@ class DataLoader(object):
                         cycle_length=1,
                         block_length=1,
                         num_parallel_calls=tf.data.experimental.AUTOTUNE)
-            dataset = dataset.batch(batch_size)
+            dataset = dataset.shuffle(10*batch_size)
+            dataset = dataset.batch(5*batch_size)
             if tf.equal(data, 'train'):
                 dataset = dataset.map(crop_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
                 dataset = dataset.map(cutmix, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+                dataset = dataset.map(cutmix, num_parallel_calls=tf.data.experimental.AUTOTUNE)
             else:
                 dataset = dataset.map(resize_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            dataset = dataset.unbatch()
+            dataset = dataset.batch(batch_size)
             dataset = dataset.repeat()
             dataset = dataset.apply(tf.data.experimental.ignore_errors())
         
