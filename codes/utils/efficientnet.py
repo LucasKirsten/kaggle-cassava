@@ -497,8 +497,7 @@ def block(inputs,
   x = layers.BatchNormalization(axis=bn_axis, name=name + 'project_bn')(x)
   if id_skip and strides == 1 and filters_in == filters_out:
     if drop_rate > 0:
-      x = layers.Dropout(
-          drop_rate, noise_shape=(None, 1, 1, 1), name=name + 'drop')(x)
+      x = DropBlock(3, drop_rate, name=name + 'drop')(x)
     x = layers.add([x, inputs], name=name + 'add')
   return x
 
