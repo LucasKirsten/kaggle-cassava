@@ -4,7 +4,7 @@ CLASSES = 5
 BATCH_SIZE = 10
 INPUT_SHAPE = (512,512,3)
 SPLIT_RATIO = 0.2
-USE_FLOAT16 = False
+USE_FLOAT16 = True
 DATA_MEAN = [109.73170952, 126.66521077, 79.92212092]
 DATA_STD  = [55.86805631, 57.10547278, 51.15093823]
 
@@ -79,4 +79,6 @@ def plot_metrics(history):
 
 if __name__ == 'utils':
     from .data_loader import DataLoader
-    #from .model import Model
+    from .model import Model
+    if USE_FLOAT16:
+        print('Using mixed precision...')
