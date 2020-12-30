@@ -145,7 +145,7 @@ class DataLoader(object):
         return dataset
                     
     def view_data(self, data='train', batch_size=4):
-        x, y = next(iter(self.flow(data, batch_size)))
+        x, y = next(iter(self.flow(data, batch_size, debug=True)))
         x = x.numpy(); y = y.numpy()
         y = np.round(y, 2)
         
