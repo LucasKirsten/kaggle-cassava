@@ -105,7 +105,7 @@ class DataLoader(object):
             
         return generator
             
-    def flow(self, data, batch_size, augment=True):
+    def flow(self, data, batch_size, augment=True, debug=False):
         ''' Tensorflow iterator '''
         
         # verify dataset to be used
@@ -139,7 +139,8 @@ class DataLoader(object):
         else:
             dataset = dataset.map(resize_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         dataset = dataset.repeat()
-        dataset = dataset.apply(tf.data.experimental.ignore_errors())
+        if not debug:
+            dataset = dataset.apply(tf.data.experimental.ignore_errors())
         
         return dataset
                     
