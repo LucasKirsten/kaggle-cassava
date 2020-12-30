@@ -123,24 +123,23 @@ class DataLoader(object):
         x,y = next(self._get_generator(rows, augment)(0))
         
         # Tensorflow Dataset API options
-        with tf.device('/cpu:0'):
-            dataset = tf.data.Dataset
-            dataset = dataset.from_tensor_slices(indexes)
-            dataset = dataset.interleave(lambda index:tf.data.Dataset.from_generator(self._get_generator(rows, augment),
-                            (x.dtype, y.dtype),
-                            output_shapes=(x.shape, y.shape),
-                            args=(index,)),
-                        cycle_length=1,
-                        block_length=1,
-                        num_parallel_calls=tf.data.experimental.AUTOTUNE)
-            dataset = dataset.batch(batch_size)
-            if tf.equal(data, 'train'):
-                dataset = dataset.map(crop_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-                dataset = dataset.map(cutmix, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-            else:
-                dataset = dataset.map(resize_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-            dataset = dataset.repeat()
-            dataset = dataset.apply(tf.data.experimental.ignore_errors())
+        dataset = tf.data.Dataset
+        dataset = dataset.from_tensor_slices(indexes)
+        dataset = dataset.interleave(lambda index:tf.data.Dataset.from_generator(self._get_generator(rows, augment),
+                        (x.dtype, y.dtype),
+                        output_shapes=(x.shape, y.shape),
+                        args=(index,)),
+                    cycle_length=1,
+                    block_length=1,
+                    num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        dataset = dataset.shuffle(3*batch_size)
+        dataset = dataset.batch(batch_size)
+        if tf.equal(data, 'train'):
+            dataset = dataset.map(crop_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        else:
+            dataset = dataset.map(resize_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        dataset = dataset.repeat()
+        dataset = dataset.apply(tf.data.experimental.ignore_errors())
         
         return dataset
                     
