@@ -136,6 +136,7 @@ class DataLoader(object):
         dataset = dataset.batch(batch_size)
         if tf.equal(data, 'train'):
             dataset = dataset.map(crop_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            dataset = dataset.map(cutmix, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         else:
             dataset = dataset.map(resize_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
         dataset = dataset.repeat()
