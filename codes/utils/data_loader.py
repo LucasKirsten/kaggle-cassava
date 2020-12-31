@@ -218,6 +218,49 @@ class DataLoader(object):
         submission = pd.DataFrame(submission)
         submission.to_csv('submission.csv', index=False)
         print(submission)
+    
+    def create_tfrecords(self):
+        def _bytes_feature(value):
+            """Returns a bytes_list from a string / byte."""
+            if isinstance(value, type(tf.constant(0))):
+                value = value.numpy() # BytesList won't unpack a string from an EagerTensor.
+            return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+
+        def _float_feature(value):
+            """Returns a float_list from a float / double."""
+            return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
+
+        def _int64_feature(value):
+            """Returns an int64_list from a bool / enum / int / uint."""
+            return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+        
+        def serialize_example(feature0, feature1):
+            feature = {
+              'image': _bytes_feature(feature0),
+              'label': _int64_feature(feature1),
+            }
+            example_proto = tf.train.Example(features=tf.train.Features(feature=feature))
+            return example_proto.SerializeToString()
+        
+        for data in ['train', 'val']:
+            SIZE = 2071
+            CT = loader.data_size(data)//SIZE + int(loader.data_size(data)%SIZE!=0)
+            GENERATOR = iter(loader.flow(data, batch_size=1, augment=True if data=='train' else False))
+
+            for j in range(CT):
+                CT2 = min(SIZE, loader.data_size(data)-j*SIZE)
+
+                pbar = tqdm(range(CT2))
+                pbar.set_description(f'Step {j}/{CT}')
+                with tf.io.TFRecordWriter('/kaggle/working/%s%.2i-%i.tfrec'%(data,j,CT2)) as writer:
+                    for k in pbar:
+                        img, label = next(GENERATOR)
+                        img = loader.denorm(img[0])
+                        img = cv2.imencode('.jpg', img, (cv2.IMWRITE_JPEG_QUALITY, 94))[1].tostring()
+                        label = np.argmax(label)
+
+                        example = serialize_example(img, label)
+                        writer.write(example)
                     
 # crop image to 224x224
 def crop_image(image, target):
