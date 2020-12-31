@@ -244,18 +244,18 @@ class DataLoader(object):
         
         for data in ['train', 'val']:
             SIZE = 2071
-            CT = loader.data_size(data)//SIZE + int(loader.data_size(data)%SIZE!=0)
-            GENERATOR = iter(loader.flow(data, batch_size=1, augment=True if data=='train' else False))
+            CT = self.data_size(data)//SIZE + int(self.data_size(data)%SIZE!=0)
+            GENERATOR = iter(self.flow(data, batch_size=1, augment=True if data=='train' else False))
 
             for j in range(CT):
-                CT2 = min(SIZE, loader.data_size(data)-j*SIZE)
+                CT2 = min(SIZE, self.data_size(data)-j*SIZE)
 
                 pbar = tqdm(range(CT2))
                 pbar.set_description(f'Step {j}/{CT}')
                 with tf.io.TFRecordWriter('/kaggle/working/%s%.2i-%i.tfrec'%(data,j,CT2)) as writer:
                     for k in pbar:
                         img, label = next(GENERATOR)
-                        img = loader.denorm(img[0])
+                        img = self.denorm(img[0])
                         img = cv2.imencode('.jpg', img, (cv2.IMWRITE_JPEG_QUALITY, 94))[1].tostring()
                         label = np.argmax(label)
 
