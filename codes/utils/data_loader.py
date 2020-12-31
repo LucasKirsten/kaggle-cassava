@@ -219,7 +219,7 @@ class DataLoader(object):
         submission.to_csv('submission.csv', index=False)
         print(submission)
     
-    def create_tfrecords(self):
+    def create_tfrecords(self, folder):
         def _bytes_feature(value):
             """Returns a bytes_list from a string / byte."""
             if isinstance(value, type(tf.constant(0))):
@@ -252,7 +252,7 @@ class DataLoader(object):
 
                 pbar = tqdm(range(CT2))
                 pbar.set_description(f'Step {j}/{CT}')
-                with tf.io.TFRecordWriter('/kaggle/working/%s%.2i-%i.tfrec'%(data,j,CT2)) as writer:
+                with tf.io.TFRecordWriter(os.path.join(folder, '%s%.2i-%i.tfrec'%(data,j,CT2))) as writer:
                     for k in pbar:
                         img, label = next(GENERATOR)
                         img = self.denorm(img[0])
