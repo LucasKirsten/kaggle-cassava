@@ -31,6 +31,9 @@ class DataLoader(object):
         
         # split into train and validation sets
         self.split_method = split_method
+        if split_method is None or split_method=='none':
+            self.df_train = df
+            self.df_val = []
         self.df_train, self.df_val = self._split_data(df, split_method)
         
         classes_to_predict = list(range(CLASSES))
@@ -105,7 +108,7 @@ class DataLoader(object):
             
         return generator
             
-    def flow(self, data, batch_size, augment=True, debug=False):
+    def flow(self, data, batch_size, augment=True):
         ''' Tensorflow iterator '''
         
         # verify dataset to be used
@@ -123,30 +126,33 @@ class DataLoader(object):
         x,y = next(self._get_generator(rows, augment)(0))
         
         # Tensorflow Dataset API options
-        dataset = tf.data.Dataset
-        dataset = dataset.from_tensor_slices(indexes)
-        dataset = dataset.interleave(lambda index:tf.data.Dataset.from_generator(self._get_generator(rows, augment),
-                        (x.dtype, y.dtype),
-                        output_shapes=(x.shape, y.shape),
-                        args=(index,)),
-                    cycle_length=1,
-                    block_length=1,
-                    num_parallel_calls=tf.data.experimental.AUTOTUNE)
-        dataset = dataset.shuffle(3*batch_size)
-        dataset = dataset.batch(batch_size)
-        if tf.equal(data, 'train'):
-            dataset = dataset.map(crop_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-            dataset = dataset.map(cutmix, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-        else:
-            dataset = dataset.map(resize_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-        dataset = dataset.repeat()
-        if not debug:
+        with tf.device('/cpu:0'):
+            dataset = tf.data.Dataset
+            dataset = dataset.from_tensor_slices(indexes)
+            dataset = dataset.interleave(lambda index:tf.data.Dataset.from_generator(self._get_generator(rows, augment),
+                            (x.dtype, y.dtype),
+                            output_shapes=(x.shape, y.shape),
+                            args=(index,)),
+                        cycle_length=1,
+                        block_length=1,
+                        num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            dataset = dataset.shuffle(3*batch_size)
+            dataset = dataset.batch(2*batch_size)
+            if tf.equal(data, 'train'):
+                dataset = dataset.map(crop_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+                dataset = dataset.map(cutmix, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+                dataset = dataset.map(cutmix, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            else:
+                dataset = dataset.map(resize_image, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            dataset = dataset.unbatch()
+            dataset = dataset.batch(batch_size)
+            dataset = dataset.repeat()
             dataset = dataset.apply(tf.data.experimental.ignore_errors())
         
         return dataset
                     
     def view_data(self, data='train', batch_size=4):
-        x, y = next(iter(self.flow(data, batch_size, debug=True)))
+        x, y = next(iter(self.flow(data, batch_size)))
         x = x.numpy(); y = y.numpy()
         y = np.round(y, 2)
         
@@ -218,49 +224,6 @@ class DataLoader(object):
         submission = pd.DataFrame(submission)
         submission.to_csv('submission.csv', index=False)
         print(submission)
-    
-    def create_tfrecords(self, folder):
-        def _bytes_feature(value):
-            """Returns a bytes_list from a string / byte."""
-            if isinstance(value, type(tf.constant(0))):
-                value = value.numpy() # BytesList won't unpack a string from an EagerTensor.
-            return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
-
-        def _float_feature(value):
-            """Returns a float_list from a float / double."""
-            return tf.train.Feature(float_list=tf.train.FloatList(value=[value]))
-
-        def _int64_feature(value):
-            """Returns an int64_list from a bool / enum / int / uint."""
-            return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
-        
-        def serialize_example(feature0, feature1):
-            feature = {
-              'image': _bytes_feature(feature0),
-              'label': _int64_feature(feature1),
-            }
-            example_proto = tf.train.Example(features=tf.train.Features(feature=feature))
-            return example_proto.SerializeToString()
-        
-        for data in ['train', 'val']:
-            SIZE = 2071
-            CT = self.data_size(data)//SIZE + int(self.data_size(data)%SIZE!=0)
-            GENERATOR = iter(self.flow(data, batch_size=1, augment=True if data=='train' else False))
-
-            for j in range(CT):
-                CT2 = min(SIZE, self.data_size(data)-j*SIZE)
-
-                pbar = tqdm(range(CT2))
-                pbar.set_description(f'Step {j}/{CT}')
-                with tf.io.TFRecordWriter(os.path.join(folder, '%s%.2i-%i.tfrec'%(data,j,CT2))) as writer:
-                    for k in pbar:
-                        img, label = next(GENERATOR)
-                        img = self.denorm(img[0])
-                        img = cv2.imencode('.jpg', img, (cv2.IMWRITE_JPEG_QUALITY, 94))[1].tostring()
-                        label = np.argmax(label)
-
-                        example = serialize_example(img, label)
-                        writer.write(example)
                     
 # crop image to 224x224
 def crop_image(image, target):
