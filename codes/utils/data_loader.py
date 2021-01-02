@@ -27,7 +27,8 @@ class DataLoader(object):
         
         # open the default training csv file
         df = pd.read_csv(path_csv)
-        df['path'] = path_images + df['image_id']
+        if not (path_images is None or path_images=='none'):
+            df['path'] = path_images + df['image_id']
         
         # split into train and validation sets
         self.split_method = split_method
